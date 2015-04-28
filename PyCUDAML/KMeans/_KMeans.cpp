@@ -30,15 +30,17 @@ PyMODINIT_FUNC init_KMeans(void)
 
 static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
 {
-    int k;
+    int k, max_iter, threshold;
     PyObject *X_obj;
 
     /* Parse the input tuple */
-    if (!PyArg_ParseTuple(args, "iO", &k, &X_obj))
+    if (!PyArg_ParseTuple(args, "iOii", &k, &X_obj, &max_iter, &threshold))
         return NULL;
 
+    int typenum = NPY_FLOAT;
+
     /* Interpret the input objects as numpy arrays. */
-    PyObject *X_array = PyArray_FROM_OTF(X_obj, NPY_FLOAT, NPY_IN_ARRAY);
+    PyObject *X_array = PyArray_FROM_OTF(X_obj, typenum, NPY_IN_ARRAY);
 
     /* If that didn't work, throw an exception. */
     if (X_array == NULL) {
@@ -47,15 +49,26 @@ static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
     }
 
     /* How many data points are there? */
-    int N = (int)PyArray_DIM(X_array, 0);
+    int n = (int)PyArray_DIM(X_array, 0);
+    int d = (int)PyArray_DIM(X_array, 1);
+
+    PyArray_Descr *descr = PyArray_DescrFromType(typenum);
+    npy_intp dims[2];
+    float **X;
 
     /* Get pointers to the data as C-types. */
-    float *X = (float*)PyArray_DATA(X_array);
+    if (PyArray_AsCArray(&X_array, (void **)&X, dims, 2, descr) < 0) {
+        PyErr_SetString(PyExc_TypeError, "error converting to c array");
+        Py_DECREF(descr);
+        Py_DECREF(X_array);
+        return NULL;
+    }
 
     /* Call the external C++ function to fit K-Means clustering. */
-    float value = kmeans(k, X, N);
+    float value = kmeans(k, X, n, d, max_iter, threshold);
 
     /* Clean up. */
+    Py_DECREF(descr);
     Py_DECREF(X_array);
 
     /* Build the output tuple */
