@@ -15,6 +15,7 @@ void kmeans(int k, const float **X,
 
     init_cluster_centers(k, X, n, d, cluster_centers);
 
+    /* Init cluster assignments */
     int *cluster_assignments = NULL;
     if (!(cluster_assignments = (int *)malloc(n*sizeof(int))))
     {
@@ -22,9 +23,15 @@ void kmeans(int k, const float **X,
     }
     memset(cluster_assignments, -1, n*sizeof(int));
 
+    /* First round. */
+    assign_clusters(k, X, n, d, cluster_assignments, (const float**) cluster_centers);
 
-
-
+    // int cur_iter = 0;
+    // int delta;
+    // while (cur_iter < max_iter && (delta/n) > threshold)
+    // {
+    //     delta = 0;
+    // }
 
     free(cluster_assignments);
 }
@@ -40,6 +47,39 @@ void init_cluster_centers(int k, const float **X, int n, int d, float **cluster_
         }
         memcpy(cluster_centers[k_i], X[X_i], d*sizeof(float));
     }
+}
+
+int assign_clusters(int k, const float **X, int n, int d,
+                      int *cluster_assignments, const float **cluster_centers)
+{
+    float cur_dist, best_dist;
+    int best_cluster;
+    int delta = 0;
+
+    for (int X_i = 0; X_i < n; X_i++)
+    {
+        best_dist = INFINITY;
+        best_cluster = -1;
+
+        for (int k_i = 0; k_i < k; k_i++)
+        {
+            cur_dist = calc_distances(X[X_i], cluster_centers[k_i], d);
+            if (cur_dist < best_dist)
+            {
+                best_dist = cur_dist;
+                best_cluster = k_i;
+            }
+        }
+
+        if (cluster_assignments[X_i] != best_cluster)
+        {
+            delta++;
+        }
+
+        cluster_assignments[X_i] = best_cluster;
+    }
+
+    return delta;
 }
 
 float calc_distances(const float* p1, const float* p2, int d)
