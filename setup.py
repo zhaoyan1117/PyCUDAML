@@ -5,8 +5,9 @@ import numpy.distutils.misc_util
 
 __version__ = '0.1'
 
-KMeans_ext = Extension("KMeans._KMeans",
-                       sources=["KMeans/_KMeans.cpp", "KMeans/KMeans.cpp"])
+KMeans_ext = Extension("PyCUDAML.KMeans._KMeans",
+                       sources=["PyCUDAML/KMeans/_KMeans.cpp",
+                                "PyCUDAML/KMeans/KMeans.cpp"])
 
 setup(
     name='PyCUDAML',
