@@ -2,7 +2,8 @@
 from distutils.core import setup, Extension
 import numpy.distutils.misc_util
 
-KMeans_ext = Extension("KMeans._KMeans", ["KMeans/_KMeans.cpp", "KMeans/KMeans.cpp"])
+KMeans_ext = Extension("KMeans._KMeans",
+                       sources=["KMeans/_KMeans.cpp", "KMeans/KMeans.cpp"])
 
 setup(
     ext_modules=[KMeans_ext],
