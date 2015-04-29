@@ -12,7 +12,18 @@ float kmeans(int k, const float **X,
              float **cluster_centers)
 {
     srand(time(NULL));
+
     init_cluster_centers(k, X, n, d, cluster_centers);
+
+    int *cluster_assignments = NULL;
+    if (!(cluster_assignments = (int *)malloc(n*sizeof(int))))
+    {
+        throw;
+    }
+    memset(cluster_assignments, -1, n*sizeof(int));
+
+
+    free(cluster_assignments);
     return 0;
 }
 
