@@ -1,12 +1,18 @@
-#include <iostream>
-#include <iomanip>
 #include <stdlib.h>
+#include <iostream>
+#include <string.h>
+#include <iomanip>
 #include <math.h>
 #include <time.h>
-#include <string.h>
-#include <cuda.h>
 
 #include "KMeans.cuh"
+
+#define NUM_THREADS 10
+
+inline int calc_num_blks(int value)
+{
+  return (value + NUM_THREADS - 1) / NUM_THREADS;
+}
 
 void kmeans(int k, const float **X,
             int n, int d,
@@ -14,6 +20,38 @@ void kmeans(int k, const float **X,
             float **cluster_centers, int* cluster_assignments)
 {
   srand(time(NULL));
+
+  /* Copy input to GPU as a flatten array */
+  float *device_X;
+  if (cudaMalloc((void **) &device_X, n * d * sizeof(float)) != cudaSuccess)
+    throw;
+  for (int i = 0; i < n; i++)
+  {
+    if (cudaMemcpy(device_X+i*d, X[i], d * sizeof(float), cudaMemcpyHostToDevice) != cudaSuccess)
+      throw;
+  }
+
+  /* Init device cluster centers as a flatten array */
+  float *device_cluster_centers;
+  if (cudaMalloc((void **) &device_cluster_centers, k * d * sizeof(float)) != cudaSuccess)
+    throw;
+
+  curandState* device_states;
+  cudaMalloc((void **) &device_states, k*sizeof(curandState));
+  cu_init_cluster_centers <<< calc_num_blks(k), NUM_THREADS >>> \
+        (k, (const float*) device_X, n, d, device_cluster_centers, \
+         device_states, unsigned(time(NULL)));
+
+  /* Init device cluster assignments */
+  int *cluster_assignments;
+  if (cudaMalloc((void **) &cluster_assignments, n*sizeof(int)) != cudaSuccess)
+    throw;
+
+
+
+
+
+
 
   init_cluster_centers(k, X, n, d, cluster_centers);
 
@@ -37,6 +75,27 @@ void kmeans(int k, const float **X,
 
     delta_rate = ((float)delta)/((float)n);
     cur_iter++;
+  }
+
+  /* Clean up. */
+  cudaFree(device_X);
+  cudaFree(device_states);
+  cudaFree(device_cluster_centers);
+}
+
+__global__ void cu_init_cluster_centers(int k, const float *device_X, int n, int d,
+                                        float *device_cluster_centers,
+                                        curandState *device_states, unsigned long seed)
+{
+  int my_id = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (my_id < k)
+  {
+    curandState my_state = device_states[my_id];
+    curand_init(seed, my_id, 0, &my_state);
+    int X_i;
+    X_i = (int) (curand_uniform(&my_state) * n);
+    memcpy(device_cluster_centers + my_id * d, device_X + X_i * d, sizeof(float) * d);
   }
 }
 

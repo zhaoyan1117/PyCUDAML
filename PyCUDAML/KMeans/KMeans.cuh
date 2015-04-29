@@ -1,6 +1,10 @@
 #ifndef __KMEANS_CUH__
 #define __KMEANS_CUH__
 
+#include <cuda.h>
+#include <curand.h>
+#include <curand_kernel.h>
+
 void kmeans(int k, const float **X,
             int n, int d,
             int max_iter, float threshold,
@@ -23,5 +27,9 @@ void calc_cluster_centers(int k, const float **X, int n, int d,
                           const int *cluster_assignments, float **cluster_centers);
 
 bool is_terminated(int cur_iter, int max_iter, float delta_rate, float threshold);
+
+__global__ void cu_init_cluster_centers(int k, const float *device_X, int n, int d,
+                                        float *device_cluster_centers,
+                                        curandState *device_states, unsigned long seed);
 
 #endif /* __KMEANS_CUH__ */

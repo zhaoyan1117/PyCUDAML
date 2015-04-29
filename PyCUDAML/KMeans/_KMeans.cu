@@ -1,6 +1,7 @@
-#include <Python.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#include <Python.h>
 #include <numpy/arrayobject.h>
 
 #include "KMeans.cuh"
