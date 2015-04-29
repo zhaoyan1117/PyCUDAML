@@ -27,7 +27,8 @@ void kmeans(int k, const float **X,
 
   while (!is_terminated(cur_iter, max_iter, delta_rate, threshold))
   {
-    std::cout << '[' << cur_iter << "/" << max_iter << ']' << std::endl;
+    std::cout << '\r' <<'[' << cur_iter << "/" << max_iter << ']';
+    std::cout.flush();
 
     delta = assign_clusters(k, X, n, d,
                             cluster_assignments, (const float**) cluster_centers);
@@ -44,7 +45,7 @@ bool is_terminated(int cur_iter, int max_iter, float delta_rate, float threshold
   {
     if (cur_iter > max_iter)
     {
-      std::cout << std::endl
+      std::cout << '\r'
                 << "Iteration: ["
                 << cur_iter-1 << "/" << max_iter
                 << "] | Delta rate: "
@@ -54,7 +55,7 @@ bool is_terminated(int cur_iter, int max_iter, float delta_rate, float threshold
     }
     else if (delta_rate < threshold)
     {
-      std::cout << std::endl
+      std::cout << '\r'
                 << "Iteration: ["
                 << cur_iter-1 << "/" << max_iter
                 << "] | Delta rate: "
@@ -71,7 +72,7 @@ bool is_terminated(int cur_iter, int max_iter, float delta_rate, float threshold
   {
     if (delta_rate < threshold)
     {
-      std::cout << std::endl
+      std::cout << '\r'
                 << "Iteration: ["
                 << cur_iter-1 << "/" << max_iter
                 << "] | Delta rate: "
