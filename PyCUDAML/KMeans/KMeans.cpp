@@ -1,4 +1,5 @@
-#include <stdio.h>
+#include <iostream>
+#include <iomanip>
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
@@ -17,35 +18,48 @@ void kmeans(int k, const float **X,
 
   /* First round. */
   int delta;
+  float delta_rate;
   int cur_iter = 0;
 
   delta = assign_clusters(k, X, n, d, cluster_assignments, (const float**) cluster_centers);
   calc_cluster_centers(k, X, n, d, (const int*) cluster_assignments, cluster_centers);
+  delta_rate = ((float)delta)/((float)n);
 
-  while (!is_terminated(cur_iter, max_iter, delta, n, threshold))
+  while (!is_terminated(cur_iter, max_iter, delta_rate, threshold))
   {
+    std::cout << '[' << cur_iter << "/" << max_iter << ']' << std::endl;
+
     delta = assign_clusters(k, X, n, d,
                             cluster_assignments, (const float**) cluster_centers);
     calc_cluster_centers(k, X, n, d, (const int*) cluster_assignments, cluster_centers);
 
+    delta_rate = ((float)delta)/((float)n);
     cur_iter++;
   }
 }
 
-bool is_terminated(int cur_iter, int max_iter, int delta, int n, float threshold)
+bool is_terminated(int cur_iter, int max_iter, float delta_rate, float threshold)
 {
-  float delta_rate = ((float)delta)/((float)n);
-
   if (max_iter)
   {
     if (cur_iter > max_iter)
     {
-      printf("Iteration: [%d/%d] | Delta rate: %f\n", cur_iter, max_iter, delta_rate);
+      std::cout << std::endl
+                << "Iteration: ["
+                << cur_iter-1 << "/" << max_iter
+                << "] | Delta rate: "
+                << delta_rate
+                << std::endl;
       return 1;
     }
     else if (delta_rate < threshold)
     {
-      printf("Iteration: [%d/%d] | Delta rate: %f\n", cur_iter, max_iter, delta_rate);
+      std::cout << std::endl
+                << "Iteration: ["
+                << cur_iter-1 << "/" << max_iter
+                << "] | Delta rate: "
+                << delta_rate
+                << std::endl;
       return 1;
     }
     else
@@ -57,7 +71,12 @@ bool is_terminated(int cur_iter, int max_iter, int delta, int n, float threshold
   {
     if (delta_rate < threshold)
     {
-      printf("Iteration: [%d/%d] | Delta rate: %f\n", cur_iter, max_iter, delta_rate);
+      std::cout << std::endl
+                << "Iteration: ["
+                << cur_iter-1 << "/" << max_iter
+                << "] | Delta rate: "
+                << delta_rate
+                << std::endl;
       return 1;
     }
     else

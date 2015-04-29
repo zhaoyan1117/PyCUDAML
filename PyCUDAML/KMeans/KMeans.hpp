@@ -22,6 +22,6 @@ int assign_clusters(int k, const float **X, int n, int d,
 void calc_cluster_centers(int k, const float **X, int n, int d,
                           const int *cluster_assignments, float **cluster_centers);
 
-bool is_terminated(int cur_iter, int max_iter, int delta, int n, float threshold);
+bool is_terminated(int cur_iter, int max_iter, float delta_rate, float threshold);
 
 #endif /* __KMEANS_HPP__ */
