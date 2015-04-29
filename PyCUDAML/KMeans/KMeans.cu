@@ -4,8 +4,9 @@
 #include <math.h>
 #include <time.h>
 #include <string.h>
+#include <cuda.h>
 
-#include "KMeans.hpp"
+#include "KMeans.cuh"
 
 void kmeans(int k, const float **X,
             int n, int d,
