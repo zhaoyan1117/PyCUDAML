@@ -1,7 +1,7 @@
 void kmeans(int k, const float **X,
             int n, int d,
             int max_iter, float threshold,
-            float **cluster_centers);
+            float **cluster_centers, int* cluster_assignments);
 
 void init_cluster_centers(int k, const float **X, int n, int d, float **cluster_centers);
 

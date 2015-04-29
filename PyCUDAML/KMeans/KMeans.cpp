@@ -7,21 +7,13 @@
 #include "KMeans.hpp"
 
 void kmeans(int k, const float **X,
-       int n, int d,
-       int max_iter, float threshold,
-       float **cluster_centers)
+            int n, int d,
+            int max_iter, float threshold,
+            float **cluster_centers, int* cluster_assignments)
 {
   srand(time(NULL));
 
   init_cluster_centers(k, X, n, d, cluster_centers);
-
-  /* Init cluster assignments */
-  int *cluster_assignments = NULL;
-  if (!(cluster_assignments = (int *)malloc(n*sizeof(int))))
-  {
-    throw;
-  }
-  memset(cluster_assignments, -1, n*sizeof(int));
 
   /* First round. */
   assign_clusters(k, X, n, d, cluster_assignments, (const float**) cluster_centers);
@@ -38,8 +30,6 @@ void kmeans(int k, const float **X,
 
     cur_iter++;
   }
-
-  free(cluster_assignments);
 }
 
 void init_cluster_centers(int k, const float **X, int n, int d, float **cluster_centers)

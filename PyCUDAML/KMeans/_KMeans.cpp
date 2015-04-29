@@ -73,22 +73,38 @@ static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
     {
         throw;
     }
-    kmeans(k, (const float **) X, n, d, max_iter, threshold, cluster_centers);
+
+    /* Init cluster assignments */
+    int *cluster_assignments = NULL;
+    if (!(cluster_assignments = (int *)malloc(n*sizeof(int))))
+    {
+        throw;
+    }
+    memset(cluster_assignments, -1, n*sizeof(int));
+
+    kmeans(k, (const float **) X, n, d, max_iter, threshold,
+           cluster_centers, cluster_assignments);
 
     /* Build the output tuple */
     dims[0] = k;
     dims[1] = d;
-    PyObject *ret = PyArray_SimpleNew(2, dims, typenum);
-    float *p_ret = (float *) PyArray_DATA(ret);
+    PyObject *ret_centers = PyArray_SimpleNew(2, dims, typenum);
+    float *p_ret_centers = (float *) PyArray_DATA(ret_centers);
     for (int k_i = 0; k_i < k; ++k_i) {
-        memcpy(p_ret, cluster_centers[k_i], sizeof(float) * d);
-        p_ret += d;
+        memcpy(p_ret_centers, cluster_centers[k_i], sizeof(float) * d);
+        p_ret_centers += d;
     }
+
+    npy_intp assigns_dim[1] = {n};
+    PyObject *ret_assigns = PyArray_SimpleNew(1, assigns_dim, NPY_INT32);
+    int *p_ret_assigns = (int *) PyArray_DATA(ret_assigns);
+    memcpy(p_ret_assigns, cluster_assignments, sizeof(int) * n);
 
     /* Clean up. */
     Py_DECREF(descr);
     Py_DECREF(X_array);
     free_cluster_centers(k, cluster_centers, d);
+    free(cluster_assignments);
 
-    return ret;
+    return Py_BuildValue("OO", ret_centers, ret_assigns);
 }
