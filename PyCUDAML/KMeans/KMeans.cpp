@@ -27,12 +27,17 @@ void kmeans(int k, const float **X,
   assign_clusters(k, X, n, d, cluster_assignments, (const float**) cluster_centers);
   calc_cluster_centers(k, X, n, d, (const int*) cluster_assignments, cluster_centers);
 
-  // int cur_iter = 0;
-  // int delta;
-  // while (cur_iter < max_iter && (delta/n) > threshold)
-  // {
-  //     delta = 0;
-  // }
+  int cur_iter = 0;
+  int delta;
+
+  while (cur_iter < max_iter && (delta/n) > threshold)
+  {
+    delta = assign_clusters(k, X, n, d,
+                            cluster_assignments, (const float**) cluster_centers);
+    calc_cluster_centers(k, X, n, d, (const int*) cluster_assignments, cluster_centers);
+
+    cur_iter++;
+  }
 
   free(cluster_assignments);
 }
