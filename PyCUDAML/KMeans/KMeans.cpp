@@ -16,19 +16,54 @@ void kmeans(int k, const float **X,
   init_cluster_centers(k, X, n, d, cluster_centers);
 
   /* First round. */
-  assign_clusters(k, X, n, d, cluster_assignments, (const float**) cluster_centers);
+  int delta;
+  int cur_iter = 0;
+
+  delta = assign_clusters(k, X, n, d, cluster_assignments, (const float**) cluster_centers);
   calc_cluster_centers(k, X, n, d, (const int*) cluster_assignments, cluster_centers);
 
-  int cur_iter = 0;
-  int delta;
-
-  while (cur_iter < max_iter && (delta/n) > threshold)
+  while (!is_terminated(cur_iter, max_iter, delta, n, threshold))
   {
     delta = assign_clusters(k, X, n, d,
                             cluster_assignments, (const float**) cluster_centers);
     calc_cluster_centers(k, X, n, d, (const int*) cluster_assignments, cluster_centers);
 
     cur_iter++;
+  }
+}
+
+bool is_terminated(int cur_iter, int max_iter, int delta, int n, float threshold)
+{
+  float delta_rate = ((float)delta)/((float)n);
+
+  if (max_iter)
+  {
+    if (cur_iter > max_iter)
+    {
+      printf("Iteration: [%d/%d] | Delta rate: %f\n", cur_iter, max_iter, delta_rate);
+      return 1;
+    }
+    else if (delta_rate < threshold)
+    {
+      printf("Iteration: [%d/%d] | Delta rate: %f\n", cur_iter, max_iter, delta_rate);
+      return 1;
+    }
+    else
+    {
+      return 0;
+    }
+  }
+  else
+  {
+    if (delta_rate < threshold)
+    {
+      printf("Iteration: [%d/%d] | Delta rate: %f\n", cur_iter, max_iter, delta_rate);
+      return 1;
+    }
+    else
+    {
+      return 0;
+    }
   }
 }
 

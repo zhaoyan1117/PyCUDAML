@@ -17,4 +17,6 @@ int assign_clusters(int k, const float **X, int n, int d,
                     int *cluster_assignments, const float **cluster_centers);
 
 void calc_cluster_centers(int k, const float **X, int n, int d,
-                    const int *cluster_assignments, float **cluster_centers);
+                          const int *cluster_assignments, float **cluster_centers);
+
+bool is_terminated(int cur_iter, int max_iter, int delta, int n, float threshold);
