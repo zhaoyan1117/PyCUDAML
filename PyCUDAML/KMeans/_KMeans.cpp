@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <stdio.h>
 #include <Python.h>
 #include <numpy/arrayobject.h>
 #include "KMeans.hpp"
@@ -64,14 +66,28 @@ static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    /* Call the external C++ function to fit K-Means clustering. */
-    float value = kmeans(k, X, n, d, max_iter, threshold);
+    /* Run KMeans clustering */
+    float **cluster_centers = NULL;
+    if (!(cluster_centers = (float**)malloc(k*sizeof(float*))))
+    {
+        throw;
+    }
+    kmeans(k, (const float **) X, n, d, max_iter, threshold, cluster_centers);
+
+    /* Build the output tuple */
+    dims[0] = k;
+    dims[1] = d;
+    PyObject *ret = PyArray_SimpleNew(2, dims, typenum);
+    float *p_ret = (float *) PyArray_DATA(ret);
+    for (int k_i = 0; k_i < k; ++k_i) {
+        memcpy(p_ret, cluster_centers[k_i], sizeof(float) * d);
+        p_ret += d;
+    }
 
     /* Clean up. */
     Py_DECREF(descr);
     Py_DECREF(X_array);
+    free_cluster_centers(k, cluster_centers, d);
 
-    /* Build the output tuple */
-    PyObject *ret = Py_BuildValue("f", value);
     return ret;
 }
