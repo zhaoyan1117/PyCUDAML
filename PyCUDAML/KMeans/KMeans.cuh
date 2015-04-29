@@ -1,5 +1,5 @@
-#ifndef __KMEANS_HPP__
-#define __KMEANS_HPP__
+#ifndef __KMEANS_CUH__
+#define __KMEANS_CUH__
 
 void kmeans(int k, const float **X,
             int n, int d,
@@ -24,4 +24,4 @@ void calc_cluster_centers(int k, const float **X, int n, int d,
 
 bool is_terminated(int cur_iter, int max_iter, float delta_rate, float threshold);
 
-#endif /* __KMEANS_HPP__ */
+#endif /* __KMEANS_CUH__ */
