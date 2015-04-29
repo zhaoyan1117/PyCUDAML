@@ -8,7 +8,7 @@
 
 void kmeans(int k, const float **X,
        int n, int d,
-       int max_iter, int threshold,
+       int max_iter, float threshold,
        float **cluster_centers)
 {
   srand(time(NULL));

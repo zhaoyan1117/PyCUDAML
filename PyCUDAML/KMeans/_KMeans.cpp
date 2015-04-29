@@ -32,11 +32,12 @@ PyMODINIT_FUNC init_KMeans(void)
 
 static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
 {
-    int k, max_iter, threshold;
+    int k, max_iter;
+    float threshold;
     PyObject *X_obj;
 
     /* Parse the input tuple */
-    if (!PyArg_ParseTuple(args, "iOii", &k, &X_obj, &max_iter, &threshold))
+    if (!PyArg_ParseTuple(args, "iOif", &k, &X_obj, &max_iter, &threshold))
         return NULL;
 
     int typenum = NPY_FLOAT;
