@@ -6,7 +6,7 @@
 
 #include "KMeans.hpp"
 
-float kmeans(int k, const float **X,
+void kmeans(int k, const float **X,
              int n, int d,
              int max_iter, int threshold,
              float **cluster_centers)
@@ -23,8 +23,10 @@ float kmeans(int k, const float **X,
     memset(cluster_assignments, -1, n*sizeof(int));
 
 
+
+
+
     free(cluster_assignments);
-    return 0;
 }
 
 void init_cluster_centers(int k, const float **X, int n, int d, float **cluster_centers)
@@ -38,6 +40,20 @@ void init_cluster_centers(int k, const float **X, int n, int d, float **cluster_
         }
         memcpy(cluster_centers[k_i], X[X_i], d*sizeof(float));
     }
+}
+
+float calc_distances(const float* p1, const float* p2, int d)
+{
+    float dist_sum = 0;
+    float dist = 0;
+
+    for (int d_i = 0; d_i < d; d_i++)
+    {
+        dist = p1[d_i] - p2[d_i];
+        dist_sum += dist * dist;
+    }
+
+    return sqrt(dist_sum);
 }
 
 void free_cluster_centers(int k, float **cluster_centers, int d)
