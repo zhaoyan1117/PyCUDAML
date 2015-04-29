@@ -27,7 +27,7 @@ void kmeans(int k, const float **X,
 
   while (!is_terminated(cur_iter, max_iter, delta_rate, threshold))
   {
-    std::cout << '\r' <<'[' << cur_iter << "/" << max_iter << ']';
+    std::cout << '\r' << '[' << cur_iter << "/" << max_iter << ']';
     std::cout.flush();
 
     delta = assign_clusters(k, X, n, d,
