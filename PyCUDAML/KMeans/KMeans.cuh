@@ -4,7 +4,6 @@
 #include <cuda.h>
 #include <curand.h>
 #include <curand_kernel.h>
-#include <math_functions.hpp>
 #include <math_constants.h>
 
 void kmeans(int k, const float **X,
@@ -16,8 +15,10 @@ void init_cluster_centers(int k, const float **X, int n, int d, float **cluster_
 
 float calc_distances(const float* p1, const float* p2, int d);
 
+__host__ __device__
 void increment(float* target, const float* value, int d);
 
+__host__ __device__
 void divide(float* target, float value, int d);
 
 void free_cluster_centers(int k, float **cluster_centers, int d);
@@ -40,5 +41,10 @@ __global__ void cu_assign_clusters(int k, const float *device_X, int n, int d,
                                    int *device_changed_clusters);
 
 __device__ float cu_calc_distances(const float* p1, const float* p2, int d);
+
+__global__ void cu_calc_cluster_centers(int k, const float *device_X, int n, int d,
+                                        const int *device_cluster_assignments,
+                                        float *device_cluster_centers,
+                                        float *device_new_cluster_centers);
 
 #endif /* __KMEANS_CUH__ */
