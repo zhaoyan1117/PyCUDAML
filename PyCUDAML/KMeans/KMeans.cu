@@ -7,11 +7,11 @@
 
 #include "KMeans.cuh"
 
-#define NUM_THREADS 10
+#define NUM_THREADS 16
 
-inline int calc_num_blks(int value)
+inline unsigned int calc_num_blks(int value)
 {
-  return (value + NUM_THREADS - 1) / NUM_THREADS;
+  return (unsigned int) ((value + NUM_THREADS - 1) / NUM_THREADS);
 }
 
 void kmeans(int k, const float **X,
@@ -35,20 +35,46 @@ void kmeans(int k, const float **X,
   float *device_cluster_centers;
   if (cudaMalloc((void **) &device_cluster_centers, k * d * sizeof(float)) != cudaSuccess)
     throw;
-
   curandState* device_states;
   cudaMalloc((void **) &device_states, k*sizeof(curandState));
   cu_init_cluster_centers <<< calc_num_blks(k), NUM_THREADS >>> \
-        (k, (const float*) device_X, n, d, device_cluster_centers, \
-         device_states, unsigned(time(NULL)));
-
-  /* Init device cluster assignments */
-  int *cluster_assignments;
-  if (cudaMalloc((void **) &cluster_assignments, n*sizeof(int)) != cudaSuccess)
+    (k, (const float*) device_X, n, d, device_cluster_centers, \
+      device_states, unsigned(time(NULL)));
+  if (cudaDeviceSynchronize() != cudaSuccess)
     throw;
 
+  /* Init device cluster assignments */
+  int *device_cluster_assignments;
+  if (cudaMalloc((void **) &device_cluster_assignments, n*sizeof(int)) != cudaSuccess)
+    throw;
+  int *device_changed_clusters;
+  if (cudaMalloc((void **) &device_changed_clusters, n*sizeof(int)) != cudaSuccess)
+    throw;
+  cu_assign_clusters <<< calc_num_blks(n), NUM_THREADS >>> \
+    (k, (const float*) device_X, n, d, \
+     device_cluster_assignments, (const float*) device_cluster_centers, \
+     device_changed_clusters);
+  if (cudaDeviceSynchronize() != cudaSuccess)
+    throw;
 
+  /* Init for computing delta */
+  int cu_delta;
+  int delta_threads = 0;
+  int delta_blocks = 0;
+  getNumBlocksAndThreads(n, calc_num_blks(n), NUM_THREADS,
+                         delta_blocks, delta_threads);
 
+  int *device_delta_reduce_outputs;
+  if (cudaMalloc((void **) &device_delta_reduce_outputs,
+      delta_threads*sizeof(int)) != cudaSuccess)
+    throw;
+  int *delta_reduce_outputs = (int*)malloc(delta_threads*sizeof(int));
+
+  cu_delta = total_reduce(n, delta_threads, delta_blocks,
+                          NUM_THREADS, calc_num_blks(n),
+                          delta_reduce_outputs,
+                          device_changed_clusters,
+                          device_delta_reduce_outputs);
 
 
 
@@ -81,6 +107,10 @@ void kmeans(int k, const float **X,
   cudaFree(device_X);
   cudaFree(device_states);
   cudaFree(device_cluster_centers);
+  cudaFree(device_cluster_assignments);
+  cudaFree(device_changed_clusters);
+  cudaFree(device_delta_reduce_outputs);
+  free(delta_reduce_outputs);
 }
 
 __global__ void cu_init_cluster_centers(int k, const float *device_X, int n, int d,
@@ -96,6 +126,45 @@ __global__ void cu_init_cluster_centers(int k, const float *device_X, int n, int
     int X_i;
     X_i = (int) (curand_uniform(&my_state) * n);
     memcpy(device_cluster_centers + my_id * d, device_X + X_i * d, sizeof(float) * d);
+  }
+}
+
+__global__ void cu_assign_clusters(int k, const float *device_X, int n, int d,
+                                   int *device_cluster_assignments,
+                                   const float *device_cluster_centers,
+                                   int *device_changed_clusters)
+{
+  int my_id = blockIdx.x * blockDim.x + threadIdx.x;
+  if (my_id < n)
+  {
+    float cur_dist, best_dist;
+    int best_cluster;
+
+    best_dist = CUDART_INF_F;
+    best_cluster = -1;
+
+    for (int k_i = 0; k_i < k; k_i++)
+    {
+      cur_dist = cu_calc_distances(device_X+my_id*d,
+                                   device_cluster_centers+k_i*d,
+                                   d);
+      if (cur_dist < best_dist)
+      {
+        best_dist = cur_dist;
+        best_cluster = k_i;
+      }
+    }
+
+    if (device_cluster_assignments[my_id] != best_cluster)
+    {
+      device_changed_clusters[my_id] = 1;
+    }
+    else
+    {
+      device_changed_clusters[my_id] = 0;
+    }
+
+    device_cluster_assignments[my_id] = best_cluster;
   }
 }
 
@@ -267,6 +336,20 @@ float calc_distances(const float* p1, const float* p2, int d)
   }
 
   return sqrt(dist_sum);
+}
+
+__device__ float cu_calc_distances(const float* p1, const float* p2, int d)
+{
+  float dist_sum = 0;
+  float dist = 0;
+
+  for (int d_i = 0; d_i < d; d_i++)
+  {
+    dist = p1[d_i] - p2[d_i];
+    dist_sum += dist * dist;
+  }
+
+  return sqrtf(dist_sum);
 }
 
 void free_cluster_centers(int k, float **cluster_centers, int d)
