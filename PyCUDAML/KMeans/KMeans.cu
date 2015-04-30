@@ -10,7 +10,7 @@
 
 #include "KMeans.cuh"
 
-#define NUM_THREADS 16
+#define NUM_THREADS 128
 
 inline unsigned int calc_num_blks(int value)
 {
@@ -63,7 +63,6 @@ void kmeans(int k, const float **X,
   checkCudaError(cudaMalloc((void **) &device_new_cluster_centers, k * d * sizeof(float)));
 
   int cur_iter = 0;
-
   do {
     std::cout << '\r' << '[' << cur_iter << "/" << max_iter << ']';
     std::cout.flush();
@@ -219,98 +218,6 @@ bool is_terminated(int cur_iter, int max_iter, float delta_rate, float threshold
   }
 }
 
-void init_cluster_centers(int k, const float **X, int n, int d, float **cluster_centers)
-{
-  for (int k_i = 0; k_i < k; k_i++)
-  {
-    int X_i = rand() % n;
-    if (!(cluster_centers[k_i] = (float*)malloc(d*sizeof(float))))
-    {
-      throw;
-    }
-    memcpy(cluster_centers[k_i], X[X_i], d*sizeof(float));
-  }
-}
-
-int assign_clusters(int k, const float **X, int n, int d,
-          int *cluster_assignments, const float **cluster_centers)
-{
-  float cur_dist, best_dist;
-  int best_cluster;
-  int delta = 0;
-
-  for (int X_i = 0; X_i < n; X_i++)
-  {
-    best_dist = INFINITY;
-    best_cluster = -1;
-
-    for (int k_i = 0; k_i < k; k_i++)
-    {
-      cur_dist = calc_distances(X[X_i], cluster_centers[k_i], d);
-      if (cur_dist < best_dist)
-      {
-        best_dist = cur_dist;
-        best_cluster = k_i;
-      }
-    }
-
-    if (cluster_assignments[X_i] != best_cluster)
-    {
-      delta++;
-    }
-
-    cluster_assignments[X_i] = best_cluster;
-  }
-
-  return delta;
-}
-
-void calc_cluster_centers(int k, const float **X, int n, int d,
-                          const int *cluster_assignments, float **cluster_centers)
-{
-  float **new_cluster_centers = NULL;
-  if (!(new_cluster_centers = (float**)malloc(k*sizeof(float*))))
-  {
-    throw;
-  }
-  for (int k_i = 0; k_i < k; k_i++)
-  {
-    if (!(new_cluster_centers[k_i] = (float*)calloc(d,sizeof(float))))
-    {
-      throw;
-    }
-  }
-
-  int *counts = (int*)calloc(k,sizeof(int));
-  int cluster;
-  for (int X_i = 0; X_i < n; X_i++)
-  {
-    cluster = cluster_assignments[X_i];
-
-    counts[cluster]++;
-    increment(new_cluster_centers[cluster], X[X_i], d);
-  }
-
-  for (int k_i = 0; k_i < k; k_i++)
-  {
-    if (counts[k_i])
-    {
-      divide(new_cluster_centers[k_i], counts[k_i], d);
-    }
-  }
-
-  for (int k_i = 0; k_i < k; k_i++)
-  {
-    if (counts[k_i])
-    {
-      memcpy(cluster_centers[k_i], new_cluster_centers[k_i], d*sizeof(float));
-    }
-  }
-
-  free_cluster_centers(k, new_cluster_centers, d);
-  free(counts);
-}
-
 __global__ void cu_calc_cluster_centers(int k, const float *device_X, int n, int d,
                                         const int *device_cluster_assignments,
                                         float *device_cluster_centers,
@@ -342,8 +249,7 @@ __global__ void cu_calc_cluster_centers(int k, const float *device_X, int n, int
   }
 }
 
-__host__ __device__
-void increment(float* target, const float* value, int d)
+__device__ void increment(float* target, const float* value, int d)
 {
   for (int d_i = 0; d_i < d; d_i++)
   {
@@ -351,27 +257,12 @@ void increment(float* target, const float* value, int d)
   }
 }
 
-__host__ __device__
-void divide(float* target, float value, int d)
+__device__ void divide(float* target, float value, int d)
 {
   for (int d_i = 0; d_i < d; d_i++)
   {
     target[d_i] = target[d_i] / value;
   }
-}
-
-float calc_distances(const float* p1, const float* p2, int d)
-{
-  float dist_sum = 0;
-  float dist = 0;
-
-  for (int d_i = 0; d_i < d; d_i++)
-  {
-    dist = p1[d_i] - p2[d_i];
-    dist_sum += dist * dist;
-  }
-
-  return sqrt(dist_sum);
 }
 
 __device__ float cu_calc_distances(const float* p1, const float* p2, int d)
