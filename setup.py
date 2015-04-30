@@ -9,7 +9,8 @@ import sys
 
 __version__ = '0.1'
 
-extra_compile_args = ["-lpython"]
+extra_compile_args = ['-O', '--ptxas-options=-v', '--compiler-options',
+                      "'-fPIC'"]
 extra_compile_args = os.environ.get('NVCCFLAGS', '').split() + extra_compile_args
 
 libraries = ['python']
