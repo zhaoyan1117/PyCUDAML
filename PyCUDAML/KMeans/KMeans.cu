@@ -5,6 +5,9 @@
 #include <math.h>
 #include <time.h>
 
+#include "../common/total_reduction.h"
+#include "../common/cuda_helper.h"
+
 #include "KMeans.cuh"
 
 #define NUM_THREADS 16
@@ -23,51 +26,46 @@ void kmeans(int k, const float **X,
 
   /* Copy input to GPU as a flatten array */
   float *device_X;
-  if (cudaMalloc((void **) &device_X, n * d * sizeof(float)) != cudaSuccess)
-    throw;
+  checkCudaError(cudaMalloc((void **) &device_X, n * d * sizeof(float)));
   for (int i = 0; i < n; i++)
   {
-    if (cudaMemcpy(device_X+i*d, X[i], d * sizeof(float), cudaMemcpyHostToDevice) != cudaSuccess)
-      throw;
+    checkCudaError(cudaMemcpy(device_X+i*d, X[i], d * sizeof(float), cudaMemcpyHostToDevice));
   }
 
   /* Init device cluster centers as a flatten array */
   float *device_cluster_centers;
-  if (cudaMalloc((void **) &device_cluster_centers, k * d * sizeof(float)) != cudaSuccess)
-    throw;
+  checkCudaError(cudaMalloc((void **) &device_cluster_centers, k * d * sizeof(float)));
+
   curandState* device_states;
-  cudaMalloc((void **) &device_states, k*sizeof(curandState));
+  checkCudaError(cudaMalloc((void **) &device_states, k*sizeof(curandState)));
   cu_init_cluster_centers <<< calc_num_blks(k), NUM_THREADS >>> \
     (k, (const float*) device_X, n, d, device_cluster_centers, \
       device_states, unsigned(time(NULL)));
-  if (cudaDeviceSynchronize() != cudaSuccess)
-    throw;
+
+  checkCudaError(cudaDeviceSynchronize());
 
   /* Init device cluster assignments */
   int *device_cluster_assignments;
-  if (cudaMalloc((void **) &device_cluster_assignments, n*sizeof(int)) != cudaSuccess)
-    throw;
+  checkCudaError(cudaMalloc((void **) &device_cluster_assignments, n*sizeof(int)));
+
   int *device_changed_clusters;
-  if (cudaMalloc((void **) &device_changed_clusters, n*sizeof(int)) != cudaSuccess)
-    throw;
+  checkCudaError(cudaMalloc((void **) &device_changed_clusters, n*sizeof(int)));
+
   cu_assign_clusters <<< calc_num_blks(n), NUM_THREADS >>> \
     (k, (const float*) device_X, n, d, \
      device_cluster_assignments, (const float*) device_cluster_centers, \
      device_changed_clusters);
-  if (cudaDeviceSynchronize() != cudaSuccess)
-    throw;
+  checkCudaError(cudaDeviceSynchronize());
 
   /* Init for computing delta */
-  int cu_delta;
+  int cu_delta = 0;
   int delta_threads = 0;
   int delta_blocks = 0;
   getNumBlocksAndThreads(n, calc_num_blks(n), NUM_THREADS,
                          delta_blocks, delta_threads);
 
   int *device_delta_reduce_outputs;
-  if (cudaMalloc((void **) &device_delta_reduce_outputs,
-      delta_threads*sizeof(int)) != cudaSuccess)
-    throw;
+  checkCudaError(cudaMalloc((void **) &device_delta_reduce_outputs, delta_threads*sizeof(int)));
   int *delta_reduce_outputs = (int*)malloc(delta_threads*sizeof(int));
 
   cu_delta = total_reduce(n, delta_threads, delta_blocks,
@@ -104,12 +102,12 @@ void kmeans(int k, const float **X,
   }
 
   /* Clean up. */
-  cudaFree(device_X);
-  cudaFree(device_states);
-  cudaFree(device_cluster_centers);
-  cudaFree(device_cluster_assignments);
-  cudaFree(device_changed_clusters);
-  cudaFree(device_delta_reduce_outputs);
+  checkCudaError(cudaFree(device_X));
+  checkCudaError(cudaFree(device_states));
+  checkCudaError(cudaFree(device_cluster_centers));
+  checkCudaError(cudaFree(device_cluster_assignments));
+  checkCudaError(cudaFree(device_changed_clusters));
+  checkCudaError(cudaFree(device_delta_reduce_outputs));
   free(delta_reduce_outputs);
 }
 

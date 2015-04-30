@@ -7,8 +7,6 @@
 #include <math_functions.hpp>
 #include <math_constants.h>
 
-#include "../common/total_reduction.h"
-
 void kmeans(int k, const float **X,
             int n, int d,
             int max_iter, float threshold,

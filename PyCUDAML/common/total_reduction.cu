@@ -32,8 +32,8 @@ void getNumBlocksAndThreads(int n, int maxBlocks, int maxThreads,
     //get device capability, to avoid block/grid size excceed the upbound
     cudaDeviceProp prop;
     int device;
-    cudaGetDevice(&device);
-    cudaGetDeviceProperties(&prop, device);
+    checkCudaError(cudaGetDevice(&device));
+    checkCudaError(cudaGetDeviceProperties(&prop, device));
 
     threads = (n < maxThreads*2) ? nextPow2((n + 1)/ 2) : maxThreads;
     blocks = (n + (threads * 2 - 1)) / (threads * 2);
@@ -56,7 +56,7 @@ int total_reduce(int n,
     bool needReadBack = true;
     int whichKernel = WHICHKERNEL;
 
-    cudaDeviceSynchronize();
+    checkCudaError(cudaDeviceSynchronize());
 
     // execute the kernel
     reduce(n, numThreads, numBlocks, whichKernel, d_idata, d_odata);
@@ -87,7 +87,7 @@ int total_reduce(int n,
         needReadBack = false;
     }
 
-    cudaDeviceSynchronize();
+    checkCudaError(cudaDeviceSynchronize());
 
     if (needReadBack)
     {
