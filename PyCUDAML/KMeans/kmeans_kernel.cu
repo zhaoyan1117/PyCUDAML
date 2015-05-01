@@ -20,13 +20,21 @@ unsigned int next_pow_2(unsigned int x)
     return ++x;
 }
 
-__host__ __device__ static inline
-float l2_distance_2(const float* p1, const float* p2, int len)
+__device__ static inline
+float l2_distance_2(const float* device_points,
+                    const float* device_cluster_centers,
+                    int num_points, int num_coords, int num_clusters,
+                    int point_i, int cluster_i)
 {
     float dist_sqr_sum = 0;
+    float dist;
 
-    for (int i = 0; i < len; i++)
-        dist_sqr_sum += (p1[i] - p2[i]) * (p1[i] - p2[i]);
+    for (int coord_i = 0; coord_i < num_coords; coord_i++)
+    {
+        dist = device_points[num_points * coord_i + point_i]
+                - device_cluster_centers[num_clusters * coord_i + cluster_i];
+        dist_sqr_sum += dist * dist;
+    }
 
     return dist_sqr_sum;
 }
@@ -52,15 +60,16 @@ void assign_clusters(const float *device_points,
         int best_cluster;
 
         best_cluster = 0;
-        min_dist = l2_distance_2(device_points + my_point_i * num_coords,
-                                 device_cluster_centers,
-                                 num_coords);
+
+        min_dist = l2_distance_2(device_points, device_cluster_centers,
+                                 num_points, num_coords, num_clusters,
+                                 my_point_i, 0);
 
         for (int cluster_i = 1; cluster_i < num_clusters; cluster_i++)
         {
-            cur_dist = l2_distance_2(device_points + my_point_i * num_coords,
-                                     device_cluster_centers + cluster_i * num_coords,
-                                     num_coords);
+            cur_dist = l2_distance_2(device_points, device_cluster_centers,
+                                     num_points, num_coords, num_clusters,
+                                     my_point_i, cluster_i);
 
             if (cur_dist < min_dist)
             {
@@ -132,18 +141,24 @@ void kmeans(const float **points,
     int cluster_i, point_i, coord_i;
 
     /*
-        Copy points to device,
-        assume points are allocated with malloc_2d.
+        Copy transposed points to device for better coalescing.
     */
-    float *device_points;
+    float *device_points, **tr_points;
 
-    // printf("haha1\n");
+    malloc_2d(tr_points, num_coords, num_points, float);
+    for (point_i = 0; point_i < num_points; point_i++)
+    {
+        for (coord_i = 0; coord_i < num_coords; coord_i++)
+        {
+            tr_points[coord_i][point_i] = points[point_i][coord_i];
+        }
+    }
 
     checkCudaError(
-        cudaMalloc((void **)&device_points, num_points * num_coords * sizeof(float)));
+        cudaMalloc((void **)&device_points, num_coords * num_points * sizeof(float)));
     checkCudaError(
-        cudaMemcpy(device_points, points[0],
-                    num_points * num_coords * sizeof(float), cudaMemcpyHostToDevice));
+        cudaMemcpy(device_points, tr_points[0],
+                    num_coords * num_points * sizeof(float), cudaMemcpyHostToDevice));
 
     /*
         Calculate block size and shared memory size.
@@ -153,8 +168,6 @@ void kmeans(const float **points,
     const unsigned int smem_size = num_threads * sizeof(unsigned char);
     const unsigned int num_r_threads = next_pow_2(num_blks);
     const unsigned int r_smem_size = num_r_threads * sizeof(unsigned int);
-
-    // printf("haha2\n");
 
     /*
         Allocate device storages.
@@ -174,9 +187,6 @@ void kmeans(const float **points,
     checkCudaError(
         cudaMalloc((void **)&device_delta_partial_sums, num_r_threads * sizeof(unsigned int)));
 
-    // printf("haha3\n");
-
-
     /*
         For cluster center calculations.
     */
@@ -189,19 +199,21 @@ void kmeans(const float **points,
     malloc_2d(new_cluster_centers, num_clusters, num_coords, float);
     memset(new_cluster_centers[0], 0, num_clusters * num_coords * sizeof(float));
 
-    // printf("haha4\n");
-
     /*
-        Randomly init cluster centers,
-        assume cluster_centers is allocated with malloc_2d.
+        Randomly init transposed cluster centers for better coalescing.
     */
     srand(time(NULL));
+
+    float **tr_cluster_centers;
+    malloc_2d(tr_cluster_centers, num_coords, num_clusters, float);
 
     for (cluster_i = 0; cluster_i < num_clusters; cluster_i++)
     {
         point_i = rand() % num_points;
-        memcpy(cluster_centers[cluster_i], points[point_i],
-                num_coords * sizeof(float));
+        for (coord_i = 0; coord_i < num_coords; coord_i++)
+        {
+            tr_cluster_centers[coord_i][cluster_i] = points[point_i][coord_i];
+        }
     }
 
     unsigned int delta;
@@ -210,10 +222,8 @@ void kmeans(const float **points,
     do {
         /* Copy cluster centers to device. */
         checkCudaError(
-            cudaMemcpy(device_cluster_centers, cluster_centers[0],
+            cudaMemcpy(device_cluster_centers, tr_cluster_centers[0],
                         num_clusters * num_coords * sizeof(float), cudaMemcpyHostToDevice));
-
-        // printf("haha5\n");
 
         /* Assign clusters. */
         assign_clusters <<< num_blks, num_threads, smem_size >>>
@@ -222,36 +232,23 @@ void kmeans(const float **points,
                 device_cluster_assignments,
                 device_delta_partial_sums);
 
-        // printf("haha6\n");
-
-
         checkCudaError(cudaDeviceSynchronize());
-
-        // printf("haha7\n");
 
         /* Compute delta. */
         reduce_delta_partial_dums <<< 1, num_r_threads, r_smem_size >>>
             (device_delta_partial_sums, num_blks);
 
-        // printf("haha8\n");
-
         checkCudaError(cudaDeviceSynchronize());
-
-
-        // printf("haha9\n");
 
         checkCudaError(
             cudaMemcpy(&delta, device_delta_partial_sums,
                         sizeof(unsigned int), cudaMemcpyDeviceToHost));
-
-        // printf("haha10\n");
 
         /* Calculate new cluster centers. */
         checkCudaError(
             cudaMemcpy(cluster_assignments, device_cluster_assignments,
                         num_points * sizeof(int), cudaMemcpyDeviceToHost));
 
-        // printf("haha11\n");
 
         for (point_i = 0; point_i < num_points; point_i++)
         {
@@ -271,7 +268,7 @@ void kmeans(const float **points,
             {
                 if (new_cluster_sizes[cluster_i])
                 {
-                    cluster_centers[cluster_i][coord_i] =
+                    tr_cluster_centers[coord_i][cluster_i] =
                         new_cluster_centers[cluster_i][coord_i] / new_cluster_sizes[cluster_i];
                 }
                 new_cluster_centers[cluster_i][coord_i] = 0.0;
@@ -282,6 +279,17 @@ void kmeans(const float **points,
     } while (((float) delta)/((float) num_points) > threshold && ++(*total_iter) < max_iter);
 
     /*
+        Fill in cluster centers.
+    */
+    for (coord_i = 0; coord_i < num_coords; coord_i++)
+    {
+        for (cluster_i = 0; cluster_i < num_clusters; cluster_i++)
+        {
+            cluster_centers[cluster_i][coord_i] = tr_cluster_centers[coord_i][cluster_i];
+        }
+    }
+
+    /*
         Free memory.
     */
     checkCudaError(cudaFree(device_points));
@@ -289,6 +297,8 @@ void kmeans(const float **points,
     checkCudaError(cudaFree(device_cluster_assignments));
     checkCudaError(cudaFree(device_delta_partial_sums));
 
+    free_2d(tr_points);
+    free_2d(tr_cluster_centers);
     free_2d(new_cluster_centers);
     free(new_cluster_sizes);
 }
