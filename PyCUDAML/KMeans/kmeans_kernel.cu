@@ -106,7 +106,7 @@ void reduce_delta_partial_dums(unsigned int *device_delta_partial_sums, int num_
 
     __syncthreads();
 
-    for (unsigned int delta_i = next_pow_2(num_partial_sums) / 2; delta_i > 0; delta_i /= 1)
+    for (unsigned int delta_i = next_pow_2(num_partial_sums) / 2; delta_i > 0; delta_i /= 2)
     {
         if (threadIdx.x < delta_i)
         {
