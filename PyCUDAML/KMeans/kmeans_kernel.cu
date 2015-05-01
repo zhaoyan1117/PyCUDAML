@@ -122,7 +122,7 @@ void reduce_delta_partial_dums(unsigned int *device_delta_partial_sums, int num_
 void kmeans(const float **points,
             int num_points, int num_coords, int num_clusters,
             float **cluster_centers, int* cluster_assignments, int *total_iter,
-            int max_iter, float threshold)
+            int max_iter, float threshold, unsigned int seed)
 {
     /*
         Indices.
@@ -191,7 +191,14 @@ void kmeans(const float **points,
     /*
         Randomly init transposed cluster centers for better coalescing.
     */
-    srand(time(NULL));
+    if (seed)
+    {
+        srand(seed);
+    }
+    else
+    {
+        srand(time(NULL));
+    }
 
     float **tr_cluster_centers;
     malloc_2d(tr_cluster_centers, num_coords, num_clusters, float);

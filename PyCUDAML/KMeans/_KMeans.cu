@@ -40,9 +40,10 @@ static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
     int k, max_iter;
     float threshold;
     PyObject *X_obj;
+    unsigned int seed;
 
     /* Parse the input tuple */
-    if (!PyArg_ParseTuple(args, "iOif", &k, &X_obj, &max_iter, &threshold))
+    if (!PyArg_ParseTuple(args, "iOifI", &k, &X_obj, &max_iter, &threshold, &seed))
         return NULL;
 
     int typenum = NPY_FLOAT;
@@ -85,7 +86,7 @@ static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
     kmeans((const float**) X,
             n, d, k,
             cluster_centers, cluster_assignments, &total_iter,
-            max_iter, threshold);
+            max_iter, threshold, seed);
 
     /* Build the output tuple */
     dims[0] = k;

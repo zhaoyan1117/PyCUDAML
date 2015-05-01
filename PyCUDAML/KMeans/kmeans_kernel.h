@@ -4,6 +4,6 @@
 void kmeans(const float **points,
             int num_points, int num_coords, int num_clusters,
             float **cluster_centers, int* cluster_assignments, int *total_iter,
-            int max_iter, float threshold);
+            int max_iter, float threshold, unsigned int seed);
 
 #endif /* __KMEANS_KERNEL_H__ */
