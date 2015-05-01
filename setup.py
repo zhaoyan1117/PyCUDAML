@@ -15,12 +15,9 @@ extra_compile_args = os.environ.get('NVCCFLAGS', '').split() + extra_compile_arg
 
 libraries = ['python']
 
-common_lib_srcs = ["PyCUDAML/common/reduction_kernel.cu",
-                   "PyCUDAML/common/total_reduction.cu"]
-
 KMeans_ext = Extension("PyCUDAML.KMeans._KMeans",
                        sources=["PyCUDAML/KMeans/_KMeans.cu",
-                                "PyCUDAML/KMeans/KMeans.cu"] + common_lib_srcs,
+                                "PyCUDAML/KMeans/kmeans_kernel.cu"],
                        libraries=libraries,
                        extra_compile_args=extra_compile_args)
 

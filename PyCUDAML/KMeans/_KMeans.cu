@@ -1,10 +1,13 @@
 #include <stdlib.h>
+#include <assert.h>
 #include <stdio.h>
 
 #include <Python.h>
 #include <numpy/arrayobject.h>
 
-#include "KMeans.cuh"
+#include "../common/mem_util.h"
+
+#include "kmeans_kernel.h"
 
 /* Docstrings */
 static char module_docstring[] =
@@ -70,22 +73,19 @@ static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
     }
 
     /* Run KMeans clustering */
-    float **cluster_centers = NULL;
-    if (!(cluster_centers = (float**)malloc(k*sizeof(float*))))
-    {
-        throw;
-    }
+    float **cluster_centers;
+    malloc_2d(cluster_centers, k, d, float);
 
     /* Init cluster assignments */
-    int *cluster_assignments = NULL;
-    if (!(cluster_assignments = (int *)malloc(n*sizeof(int))))
-    {
-        throw;
-    }
-    memset(cluster_assignments, -1, n*sizeof(int));
+    int *cluster_assignments;
+    cluster_assignments = (int *)malloc(n * sizeof(int));
+    assert(cluster_assignments != NULL);
 
-    kmeans(k, (const float **) X, n, d, max_iter, threshold,
-           cluster_centers, cluster_assignments);
+    int total_iter;
+    kmeans((const float**) X,
+            n, d, k,
+            cluster_centers, cluster_assignments, &total_iter,
+            max_iter, threshold);
 
     /* Build the output tuple */
     dims[0] = k;
@@ -105,7 +105,7 @@ static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
     /* Clean up. */
     Py_DECREF(descr);
     Py_DECREF(X_array);
-    free_cluster_centers(k, cluster_centers, d);
+    free_2d(cluster_centers);
     free(cluster_assignments);
 
     return Py_BuildValue("OO", ret_centers, ret_assigns);
