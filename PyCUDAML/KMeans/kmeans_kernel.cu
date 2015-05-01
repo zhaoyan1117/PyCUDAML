@@ -2,6 +2,7 @@
 #include <string.h>
 #include <time.h>
 #include <assert.h>
+#include <math.h>
 
 #include "../common/cuda_util.h"
 #include "../common/mem_util.h"
@@ -33,7 +34,8 @@ void assign_clusters(const float *device_points,
                      int num_points, int num_coords, int num_clusters,
                      const float *device_cluster_centers,
                      int *device_cluster_assignments,
-                     unsigned int *device_delta_partial_sums)
+                     unsigned int *device_delta_partial_sums,
+                     float* device_loss)
 {
     extern __shared__ unsigned char shared_delta_partial_sums_uchar[];
 
@@ -41,9 +43,9 @@ void assign_clusters(const float *device_points,
 
     __syncthreads();
 
-    int my_point_i = blockDim.x * blockIdx.x + threadIdx.x;
+    int point_i = blockDim.x * blockIdx.x + threadIdx.x;
 
-    if (my_point_i < num_points)
+    if (point_i < num_points)
     {
         float cur_dist, min_dist;
         int best_cluster;
@@ -52,13 +54,13 @@ void assign_clusters(const float *device_points,
 
         min_dist = l2_distance_2(device_points, device_cluster_centers,
                                  num_points, num_coords, num_clusters,
-                                 my_point_i, 0);
+                                 point_i, 0);
 
         for (int cluster_i = 1; cluster_i < num_clusters; cluster_i++)
         {
             cur_dist = l2_distance_2(device_points, device_cluster_centers,
                                      num_points, num_coords, num_clusters,
-                                     my_point_i, cluster_i);
+                                     point_i, cluster_i);
 
             if (cur_dist < min_dist)
             {
@@ -67,12 +69,14 @@ void assign_clusters(const float *device_points,
             }
         }
 
-        if (device_cluster_assignments[my_point_i] != best_cluster)
+        device_loss[point_i] = min_dist;
+
+        if (device_cluster_assignments[point_i] != best_cluster)
         {
             shared_delta_partial_sums_uchar[threadIdx.x] = 1;
         }
 
-        device_cluster_assignments[my_point_i] = best_cluster;
+        device_cluster_assignments[point_i] = best_cluster;
 
         __syncthreads();
 
@@ -121,7 +125,8 @@ void reduce_delta_partial_dums(unsigned int *device_delta_partial_sums, int num_
 
 void kmeans(const float **points,
             int num_points, int num_coords, int num_clusters,
-            float **cluster_centers, int* cluster_assignments, int *total_iter,
+            float **cluster_centers, int* cluster_assignments,
+            int *total_iter, float *total_loss, float *delta_percent,
             int max_iter, float threshold, unsigned int seed)
 {
     /*
@@ -164,6 +169,7 @@ void kmeans(const float **points,
     float *device_cluster_centers;
     int *device_cluster_assignments;
     unsigned int *device_delta_partial_sums;
+    float *device_loss;
 
     checkCudaError(
         cudaMalloc((void **)&device_cluster_centers, num_clusters * num_coords * sizeof(float)));
@@ -175,6 +181,9 @@ void kmeans(const float **points,
 
     checkCudaError(
         cudaMalloc((void **)&device_delta_partial_sums, num_r_threads * sizeof(unsigned int)));
+
+    checkCudaError(
+        cudaMalloc((void **)&device_loss, num_points * sizeof(float)));
 
     /*
         For cluster center calculations.
@@ -226,7 +235,8 @@ void kmeans(const float **points,
             ((const float*) device_points, num_points, num_coords, num_clusters,
                 (const float*) device_cluster_centers,
                 device_cluster_assignments,
-                device_delta_partial_sums);
+                device_delta_partial_sums,
+                device_loss);
 
         checkCudaError(cudaDeviceSynchronize());
 
@@ -272,7 +282,9 @@ void kmeans(const float **points,
             new_cluster_sizes[cluster_i] = 0;
         }
 
-    } while (((float) delta)/((float) num_points) > threshold && ++(*total_iter) < max_iter);
+        *delta_percent = ((float) delta)/((float) num_points);
+
+    } while (*delta_percent > threshold && ++(*total_iter) < max_iter);
 
     /*
         Fill in cluster centers.
@@ -286,15 +298,30 @@ void kmeans(const float **points,
     }
 
     /*
+        Sum up loss in CPU, since we are only doing this once.
+     */
+    float *loss = (float*)malloc(num_points * sizeof(float));
+    checkCudaError(
+        cudaMemcpy(loss, device_loss, num_points * sizeof(float), cudaMemcpyDeviceToHost));
+
+    *total_loss = 0.0;
+    for (point_i = 0; point_i < num_points; point_i++)
+    {
+        *total_loss += sqrt(loss[point_i]);
+    }
+
+    /*
         Free memory.
     */
     checkCudaError(cudaFree(device_points));
     checkCudaError(cudaFree(device_cluster_centers));
     checkCudaError(cudaFree(device_cluster_assignments));
     checkCudaError(cudaFree(device_delta_partial_sums));
+    checkCudaError(cudaFree(device_loss));
 
     free_2d(tr_points);
     free_2d(tr_cluster_centers);
     free_2d(new_cluster_centers);
     free(new_cluster_sizes);
+    free(loss);
 }

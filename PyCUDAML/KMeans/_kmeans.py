@@ -13,7 +13,8 @@ class KMeans(object):
         self.seed = seed;
 
     def fit(self, X):
-        self.means, self.cluster_assignments \
+        self.means, self.cluster_assignments, \
+        self.total_iter, self.loss, self.delta_percent \
             = kmeans(self.n_clusters,
                      X.astype(np.float32),
                      self.max_iter,

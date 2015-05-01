@@ -83,9 +83,12 @@ static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
     assert(cluster_assignments != NULL);
 
     int total_iter;
+    float total_loss;
+    float delta_percent;
     kmeans((const float**) X,
             n, d, k,
-            cluster_centers, cluster_assignments, &total_iter,
+            cluster_centers, cluster_assignments,
+            &total_iter, &total_loss, &delta_percent,
             max_iter, threshold, seed);
 
     /* Build the output tuple */
@@ -109,5 +112,7 @@ static PyObject *KMeans_kmeans(PyObject *self, PyObject *args)
     free_2d(cluster_centers);
     free(cluster_assignments);
 
-    return Py_BuildValue("OO", ret_centers, ret_assigns);
+    return Py_BuildValue("OOiff",
+                            ret_centers, ret_assigns,
+                            total_iter, total_loss, delta_percent);
 }
