@@ -5,20 +5,9 @@
 
 #include "../common/cuda_util.h"
 #include "../common/mem_util.h"
+#include "../common/math_util.h"
 
 #define NUM_THREADS 128
-
-__host__ __device__ static inline
-unsigned int next_pow_2(unsigned int x)
-{
-    --x;
-    x |= x >> 1;
-    x |= x >> 2;
-    x |= x >> 4;
-    x |= x >> 8;
-    x |= x >> 16;
-    return ++x;
-}
 
 __device__ static inline
 float l2_distance_2(const float* device_points,
@@ -33,7 +22,7 @@ float l2_distance_2(const float* device_points,
     {
         dist = device_points[num_points * coord_i + point_i]
                 - device_cluster_centers[num_clusters * coord_i + cluster_i];
-        dist_sqr_sum += dist * dist;
+        dist_sqr_sum += sqr(dist);
     }
 
     return dist_sqr_sum;
