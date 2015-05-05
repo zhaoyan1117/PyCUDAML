@@ -363,6 +363,7 @@ void kmeans(const float **points,
         Free memory.
     */
     checkCudaError(cudaFree(device_tr_points));
+    checkCudaError(cudaFree(device_points));
     checkCudaError(cudaFree(device_cluster_centers));
     checkCudaError(cudaFree(device_cluster_assignments));
     checkCudaError(cudaFree(device_delta_partial_sums));
