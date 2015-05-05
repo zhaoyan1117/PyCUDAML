@@ -9,6 +9,7 @@
 #include "../common/math_util.h"
 
 #define NUM_THREADS 128
+#define MAX_NUM_THREADS 512
 
 __device__ static inline
 float l2_distance_2(const float* device_tr_points,
@@ -207,7 +208,7 @@ void kmeans(const float **points,
     const unsigned int smem_size = num_threads * sizeof(unsigned char);
     const unsigned int num_r_threads = next_pow_2(num_blks);
     const unsigned int r_smem_size = num_r_threads * sizeof(unsigned int);
-    const unsigned int num_cc_threads = NUM_THREADS;
+    const unsigned int num_cc_threads = MAX_NUM_THREADS;
     const unsigned int num_cc_blks = (num_coords + num_cc_threads - 1) / num_cc_threads;
 
     /*
