@@ -33,7 +33,7 @@ void assign_clusters(const float *device_tr_points,
                      int num_points, int num_coords, int num_clusters,
                      const float *device_cluster_centers,
                      int *device_cluster_assignments,
-                     unsigned int *device_delta_partial_sums,
+                     unsigned int *device_delta_partial_sums_in,
                      float* device_loss)
 {
     extern __shared__ unsigned int shared_delta_partial_sums_assign[];
@@ -92,7 +92,7 @@ void assign_clusters(const float *device_tr_points,
 
         if (threadIdx.x == 0)
         {
-            device_delta_partial_sums[blockIdx.x] = shared_delta_partial_sums_assign[0];
+            device_delta_partial_sums_in[blockIdx.x] = shared_delta_partial_sums_assign[0];
         }
     }
 }
@@ -218,15 +218,18 @@ void kmeans(const float **points,
     unsigned int num_r_blks = (delta_partial_sums_size + num_r_threads - 1) / num_r_threads;
     unsigned int r_smem_size = num_r_threads * sizeof(unsigned int);
 
+
+    unsigned int *device_delta_partial_sums_1;
+    unsigned int *device_delta_partial_sums_2;
     unsigned int *device_delta_partial_sums_in;
     unsigned int *device_delta_partial_sums_out;
     unsigned int *device_delta_partial_sums_temp; /* For swapping. */
 
     checkCudaError(
-        cudaMalloc((void **)&device_delta_partial_sums_in,
+        cudaMalloc((void **)&device_delta_partial_sums_1,
                     next_pow_2(num_blks) * sizeof(unsigned int)));
     checkCudaError(
-        cudaMalloc((void **)&device_delta_partial_sums_out,
+        cudaMalloc((void **)&device_delta_partial_sums_2,
                     next_pow_2(num_r_blks) * sizeof(unsigned int)));
 
     /*
@@ -292,6 +295,13 @@ void kmeans(const float **points,
     *total_iter = 0;
 
     do {
+        device_delta_partial_sums_in = device_delta_partial_sums_1;
+        device_delta_partial_sums_out = device_delta_partial_sums_2;
+        delta_partial_sums_size = num_blks;
+        num_r_threads = min(next_pow_2(delta_partial_sums_size), MAX_NUM_THREADS);
+        num_r_blks = (delta_partial_sums_size + num_r_threads - 1) / num_r_threads;
+        r_smem_size = num_r_threads * sizeof(unsigned int);
+
         /* Assign clusters. */
         assign_clusters <<< num_blks, num_threads, smem_size >>>
             ((const float*) device_tr_points, num_points, num_coords, num_clusters,
@@ -321,7 +331,7 @@ void kmeans(const float **points,
         } while (delta_partial_sums_size > 1);
 
         checkCudaError(
-            cudaMemcpy(&delta, device_delta_partial_sums_out,
+            cudaMemcpy(&delta, device_delta_partial_sums_in,
                         sizeof(unsigned int), cudaMemcpyDeviceToHost));
 
         *delta_percent = ((float) delta)/((float) num_points);
