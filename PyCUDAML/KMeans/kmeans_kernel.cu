@@ -1,8 +1,6 @@
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
 #include <assert.h>
-#include <math.h>
 
 #include "../common/cuda_util.h"
 #include "../common/mem_util.h"
