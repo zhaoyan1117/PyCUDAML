@@ -160,6 +160,18 @@ void calc_cluster_centers(float *device_cluster_centers,
     }
 }
 
+static inline
+void set_reduction_blk_threads(unsigned int new_size,
+                               unsigned int &delta_partial_sums_size,
+                               unsigned int &num_r_threads,
+                               unsigned int &num_r_blks,
+                               unsigned int &r_smem_size)
+{
+    delta_partial_sums_size = new_size;
+    num_r_threads = min(next_pow_2(delta_partial_sums_size), MAX_NUM_THREADS);
+    num_r_blks = (delta_partial_sums_size + num_r_threads - 1) / num_r_threads;
+    r_smem_size = num_r_threads * sizeof(unsigned int);
+}
 
 void kmeans(const float **points,
             int num_points, int num_coords, int num_clusters,
@@ -213,11 +225,11 @@ void kmeans(const float **points,
     /*
         Use reduction to calculate delta.
     */
-    unsigned int delta_partial_sums_size = num_blks;
-    unsigned int num_r_threads = min(next_pow_2(delta_partial_sums_size), MAX_NUM_THREADS);
-    unsigned int num_r_blks = (delta_partial_sums_size + num_r_threads - 1) / num_r_threads;
-    unsigned int r_smem_size = num_r_threads * sizeof(unsigned int);
+    unsigned int delta_partial_sums_size;
+    unsigned int num_r_blks, num_r_threads, r_smem_size;
 
+    set_reduction_blk_threads(num_blks, delta_partial_sums_size,
+                                num_r_threads, num_r_blks, r_smem_size);
 
     unsigned int *device_delta_partial_sums_1;
     unsigned int *device_delta_partial_sums_2;
@@ -297,10 +309,8 @@ void kmeans(const float **points,
     do {
         device_delta_partial_sums_in = device_delta_partial_sums_1;
         device_delta_partial_sums_out = device_delta_partial_sums_2;
-        delta_partial_sums_size = num_blks;
-        num_r_threads = min(next_pow_2(delta_partial_sums_size), MAX_NUM_THREADS);
-        num_r_blks = (delta_partial_sums_size + num_r_threads - 1) / num_r_threads;
-        r_smem_size = num_r_threads * sizeof(unsigned int);
+        set_reduction_blk_threads(num_blks, delta_partial_sums_size,
+                                    num_r_threads, num_r_blks, r_smem_size);
 
         /* Assign clusters. */
         assign_clusters <<< num_blks, num_threads, smem_size >>>
@@ -318,10 +328,8 @@ void kmeans(const float **points,
                 (delta_partial_sums_size,
                     device_delta_partial_sums_in, device_delta_partial_sums_out);
 
-            delta_partial_sums_size = num_r_blks;
-            num_r_threads = min(next_pow_2(delta_partial_sums_size), MAX_NUM_THREADS);
-            num_r_blks = (delta_partial_sums_size + num_r_threads - 1) / num_r_threads;
-            r_smem_size = num_r_threads * sizeof(unsigned int);
+            set_reduction_blk_threads(num_r_blks, delta_partial_sums_size,
+                                        num_r_threads, num_r_blks, r_smem_size);
 
             device_delta_partial_sums_temp = device_delta_partial_sums_in;
             device_delta_partial_sums_in = device_delta_partial_sums_out;
@@ -405,8 +413,8 @@ void kmeans(const float **points,
     checkCudaError(cudaFree(device_points));
     checkCudaError(cudaFree(device_cluster_centers));
     checkCudaError(cudaFree(device_cluster_assignments));
-    checkCudaError(cudaFree(device_delta_partial_sums_in));
-    checkCudaError(cudaFree(device_delta_partial_sums_out));
+    checkCudaError(cudaFree(device_delta_partial_sums_1));
+    checkCudaError(cudaFree(device_delta_partial_sums_2));
     checkCudaError(cudaFree(device_loss));
     checkCudaError(cudaFree(device_new_cluster_centers));
 
