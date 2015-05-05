@@ -7,7 +7,7 @@
 #include "../common/math_util.h"
 
 #define NUM_THREADS 128
-#define MAX_NUM_THREADS 512
+#define MAX_NUM_THREADS 256
 
 __device__ static inline
 float l2_distance_2(const float* device_tr_points,
@@ -36,9 +36,9 @@ void assign_clusters(const float *device_tr_points,
                      unsigned int *device_delta_partial_sums,
                      float* device_loss)
 {
-    extern __shared__ unsigned char shared_delta_partial_sums_uchar[];
+    extern __shared__ unsigned int shared_delta_partial_sums_assign[];
 
-    shared_delta_partial_sums_uchar[threadIdx.x] = 0;
+    shared_delta_partial_sums_assign[threadIdx.x] = 0;
 
     __syncthreads();
 
@@ -72,7 +72,7 @@ void assign_clusters(const float *device_tr_points,
 
         if (device_cluster_assignments[point_i] != best_cluster)
         {
-            shared_delta_partial_sums_uchar[threadIdx.x] = 1;
+            shared_delta_partial_sums_assign[threadIdx.x] = 1;
         }
 
         device_cluster_assignments[point_i] = best_cluster;
@@ -84,41 +84,44 @@ void assign_clusters(const float *device_tr_points,
         {
             if (threadIdx.x < delta_i)
             {
-                shared_delta_partial_sums_uchar[threadIdx.x] \
-                    += shared_delta_partial_sums_uchar[threadIdx.x + delta_i];
+                shared_delta_partial_sums_assign[threadIdx.x] \
+                    += shared_delta_partial_sums_assign[threadIdx.x + delta_i];
             }
             __syncthreads();
         }
 
         if (threadIdx.x == 0)
         {
-            device_delta_partial_sums[blockIdx.x] = shared_delta_partial_sums_uchar[0];
+            device_delta_partial_sums[blockIdx.x] = shared_delta_partial_sums_assign[0];
         }
     }
 }
 
 __global__ static
-void reduce_delta_partial_dums(unsigned int *device_delta_partial_sums, int num_partial_sums)
+void reduce_delta_partial_sums(unsigned int num_partial_sums,
+                               unsigned int *device_delta_partial_sums_in,
+                               unsigned int *device_delta_partial_sums_out)
 {
-    extern __shared__ unsigned int shared_delta_partial_sums_uint[];
+    extern __shared__ unsigned int shared_delta_partial_sums_reduce[];
 
-    shared_delta_partial_sums_uint[threadIdx.x] = \
-        (threadIdx.x < num_partial_sums) ? device_delta_partial_sums[threadIdx.x] : 0;
+    shared_delta_partial_sums_reduce[threadIdx.x] = \
+        ((blockDim.x * blockIdx.x + threadIdx.x) < num_partial_sums) ? \
+        device_delta_partial_sums_in[blockDim.x * blockIdx.x + threadIdx.x] : 0;
 
     __syncthreads();
 
-    for (unsigned int delta_i = next_pow_2(num_partial_sums) / 2; delta_i > 0; delta_i /= 2)
+    for (unsigned int delta_i = blockDim.x / 2; delta_i > 0; delta_i /= 2)
     {
         if (threadIdx.x < delta_i)
         {
-            shared_delta_partial_sums_uint[threadIdx.x] \
-                += shared_delta_partial_sums_uint[threadIdx.x + delta_i];
+            shared_delta_partial_sums_reduce[threadIdx.x] \
+                += shared_delta_partial_sums_reduce[threadIdx.x + delta_i];
         }
         __syncthreads();
     }
 
     if (threadIdx.x == 0) {
-        device_delta_partial_sums[blockIdx.x] = shared_delta_partial_sums_uint[0];
+        device_delta_partial_sums_out[blockIdx.x] = shared_delta_partial_sums_reduce[0];
     }
 }
 
@@ -197,25 +200,40 @@ void kmeans(const float **points,
         cudaMemcpy(device_points, points[0],
                     num_points * num_coords * sizeof(float), cudaMemcpyHostToDevice));
 
-
     /*
         Calculate block size and shared memory size.
     */
     const unsigned int num_threads = NUM_THREADS;
     const unsigned int num_blks = (num_points + num_threads - 1) / num_threads;
-    const unsigned int smem_size = num_threads * sizeof(unsigned char);
-    const unsigned int num_r_threads = next_pow_2(num_blks);
-    const unsigned int r_smem_size = num_r_threads * sizeof(unsigned int);
+    const unsigned int smem_size = num_threads * sizeof(unsigned int);
+
     const unsigned int num_cc_threads = MAX_NUM_THREADS;
     const unsigned int num_cc_blks = (num_coords + num_cc_threads - 1) / num_cc_threads;
 
     /*
-        Allocate device storages.
+        Use reduction to calculate delta.
+    */
+    unsigned int delta_partial_sums_size = num_blks;
+    unsigned int num_r_threads = min(next_pow_2(delta_partial_sums_size), MAX_NUM_THREADS);
+    unsigned int num_r_blks = (delta_partial_sums_size + num_r_threads - 1) / num_r_threads;
+    unsigned int r_smem_size = num_r_threads * sizeof(unsigned int);
+
+    unsigned int *device_delta_partial_sums_in;
+    unsigned int *device_delta_partial_sums_out;
+    unsigned int *device_delta_partial_sums_temp; /* For swapping. */
+
+    checkCudaError(
+        cudaMalloc((void **)&device_delta_partial_sums_in,
+                    next_pow_2(num_blks) * sizeof(unsigned int)));
+    checkCudaError(
+        cudaMalloc((void **)&device_delta_partial_sums_out,
+                    next_pow_2(num_r_blks) * sizeof(unsigned int)));
+
+    /*
+        Cluter centers calculation.
     */
     float *device_cluster_centers;
     int *device_cluster_assignments;
-    unsigned int *device_delta_partial_sums;
-    float *device_loss;
 
     checkCudaError(
         cudaMalloc((void **)&device_cluster_centers, num_clusters * num_coords * sizeof(float)));
@@ -225,9 +243,10 @@ void kmeans(const float **points,
     checkCudaError(
         cudaMemset(device_cluster_assignments, -1, num_points * sizeof(int)));
 
-    checkCudaError(
-        cudaMalloc((void **)&device_delta_partial_sums, num_r_threads * sizeof(unsigned int)));
-
+    /*
+        Loss calculation.
+    */
+    float *device_loss;
     checkCudaError(
         cudaMalloc((void **)&device_loss, num_points * sizeof(float)));
 
@@ -278,19 +297,31 @@ void kmeans(const float **points,
             ((const float*) device_tr_points, num_points, num_coords, num_clusters,
                 (const float*) device_cluster_centers,
                 device_cluster_assignments,
-                device_delta_partial_sums,
+                device_delta_partial_sums_in,
                 device_loss);
 
         checkCudaError(cudaDeviceSynchronize());
 
         /* Compute delta. */
-        reduce_delta_partial_dums <<< 1, num_r_threads, r_smem_size >>>
-            (device_delta_partial_sums, num_blks);
+        do {
+            reduce_delta_partial_sums <<< num_r_blks, num_r_threads, r_smem_size >>>
+                (delta_partial_sums_size,
+                    device_delta_partial_sums_in, device_delta_partial_sums_out);
 
-        checkCudaError(cudaDeviceSynchronize());
+            delta_partial_sums_size = num_r_blks;
+            num_r_threads = min(next_pow_2(delta_partial_sums_size), MAX_NUM_THREADS);
+            num_r_blks = (delta_partial_sums_size + num_r_threads - 1) / num_r_threads;
+            r_smem_size = num_r_threads * sizeof(unsigned int);
+
+            device_delta_partial_sums_temp = device_delta_partial_sums_in;
+            device_delta_partial_sums_in = device_delta_partial_sums_out;
+            device_delta_partial_sums_out = device_delta_partial_sums_temp;
+
+            checkCudaError(cudaDeviceSynchronize());
+        } while (delta_partial_sums_size > 1);
 
         checkCudaError(
-            cudaMemcpy(&delta, device_delta_partial_sums,
+            cudaMemcpy(&delta, device_delta_partial_sums_out,
                         sizeof(unsigned int), cudaMemcpyDeviceToHost));
 
         *delta_percent = ((float) delta)/((float) num_points);
@@ -307,7 +338,7 @@ void kmeans(const float **points,
 
             new_cluster_sizes[cluster_i]++;
 
-            update_new_cluster_centers<<< num_cc_blks, num_cc_threads >>>
+            update_new_cluster_centers <<< num_cc_blks, num_cc_threads >>>
                 ((const float*) device_points,
                     num_coords, cluster_i, point_i,
                     device_new_cluster_centers);
@@ -364,7 +395,8 @@ void kmeans(const float **points,
     checkCudaError(cudaFree(device_points));
     checkCudaError(cudaFree(device_cluster_centers));
     checkCudaError(cudaFree(device_cluster_assignments));
-    checkCudaError(cudaFree(device_delta_partial_sums));
+    checkCudaError(cudaFree(device_delta_partial_sums_in));
+    checkCudaError(cudaFree(device_delta_partial_sums_out));
     checkCudaError(cudaFree(device_loss));
     checkCudaError(cudaFree(device_new_cluster_centers));
 
