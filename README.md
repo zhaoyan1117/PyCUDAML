@@ -11,7 +11,7 @@ Implements K-Means clustering algorithm with CUDA, and support Numpy interface.
 import numpy as np
 from PyCUDAML.KMeans import KMeans
 
-# Data matrix as a numpy array.
+# Design matrix as a numpy array.
 X = np.random.rand(60000, 748)
 
 k = KMeans(num_clusters=16, threshold=1e-2,
